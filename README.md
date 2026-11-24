@@ -86,6 +86,7 @@ If the `FORMATS,...` row is missing, the default is all formats.
   - pages to export
   - formats to export
 - Choose `Continue` to proceed or `Cancel` to stop.
+- Choose `Create Dummy CSV` to create `{Document Name}_indd_export_settings.csv` beside the saved INDD file. It contains one `,` row per page (default page suffix, no dimensions) and a final `FORMATS,NOBLEED|BLEED|WEB|PNG150|PNG300` row. Existing files are preserved. After creation, the dialog closes; edit the CSV and rerun the script to load it. Unsaved documents must be saved first.
 - At completion, a dialog includes an `Open Export Folder` button.
 
 ## Install

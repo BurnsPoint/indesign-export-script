@@ -239,7 +239,7 @@
     var archivedFolder = new Folder(movedFolder.fsName + "/" + archivedFolderName);
 
     if (archivedFolder.exists) {
-      archivedFolderName += "_" + getTimeSuffix();
+      archivedFolderName += "_" + stamp.slice(-6);
       archivedFolder = new Folder(movedFolder.fsName + "/" + archivedFolderName);
     }
 
@@ -266,15 +266,6 @@
       d.getFullYear() +
       pad2(d.getMonth() + 1) +
       pad2(d.getDate()) + "_" +
-      pad2(d.getHours()) +
-      pad2(d.getMinutes()) +
-      pad2(d.getSeconds())
-    );
-  }
-
-  function getTimeSuffix() {
-    var d = new Date();
-    return (
       pad2(d.getHours()) +
       pad2(d.getMinutes()) +
       pad2(d.getSeconds())
@@ -660,6 +651,37 @@
 
     var btns = win.add("group");
     btns.alignment = "right";
+    var dummyBtn = btns.add("button", undefined, "Create Dummy CSV");
+    dummyBtn.onClick = function () {
+      if (!doc.saved) {
+        alert("Save the InDesign document first, then run the script again to create its settings CSV.");
+        return;
+      }
+      var csv = new File(baseFolder.fsName + "/" + docName + "_indd_export_settings.csv");
+      if (csv.exists) {
+        alert("A settings CSV already exists at:\n" + csv.fsName + "\n\nEdit that file, then run the script again.");
+        return;
+      }
+      var rows = [];
+      for (var i = 0; i < totalPages; i++) {
+        rows.push(",");
+      }
+      rows.push("FORMATS,NOBLEED|BLEED|WEB|PNG150|PNG300");
+      csv.encoding = "UTF-8";
+      csv.lineFeed = "Unix";
+      if (!csv.open("w")) {
+        alert("Could not create settings CSV:\n" + csv.fsName + "\n" + csv.error);
+        return;
+      }
+      var written = csv.write(rows.join("\n") + "\n");
+      var closed = csv.close();
+      if (!written || !closed) {
+        alert("Could not finish writing settings CSV:\n" + csv.fsName + "\n" + csv.error);
+        return;
+      }
+      alert("Created settings CSV:\n" + csv.fsName + "\n\nEach page has a blank suffix and dimensions column. All export formats are enabled. Edit the CSV, then run the script again.");
+      win.close(2);
+    };
     var continueBtn = btns.add("button", undefined, "Continue", { name: "ok" });
     btns.add("button", undefined, "Cancel", { name: "cancel" });
     continueBtn.active = true;
