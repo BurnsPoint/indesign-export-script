@@ -530,7 +530,7 @@
     }
 
     var row = rows[pageIndex];
-    if (row.suffixValue === "0") {
+    if (row.suffixValue === "0" || row.suffixValue.charAt(0) === "#") {
       return null;
     }
     if (row.suffixValue !== "") {
