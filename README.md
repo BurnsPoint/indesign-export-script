@@ -20,7 +20,7 @@ Exports are written next to the INDD file (or Desktop if the document is unsaved
 
 Only the folders for enabled export formats are created. The `PNG` folder is created if either `PNG150` or `PNG300` is enabled.
 
-If `_exports/{Document Name}` already exists when you click `Continue`, it is moved to:
+For a full export, if `_exports/{Document Name}` already exists when you click `Continue`, it is archived at:
 - `_exports/_ss/moved_{Datetime}/{Document Name}`
 before the new export starts.
 
@@ -52,7 +52,12 @@ Column 2 rules:
 - `p` -> append the page dimensions in millimeters as `-WIDTHxHEIGHT`
 - empty -> do not append dimensions
 
-Example CSV rows:
+The included `indd_export_settings.csv` is an example for a six-page document. Adjust the rows for your document before using it: each page row keeps its position even when that page is skipped. For example:
+- `Cover,p` exports the page with `Cover` as its filename suffix and appends its dimensions.
+- `,p` exports the page with its page number as the suffix and appends its dimensions.
+- `#Draft,p` skips that page, keeping its settings in the CSV for later.
+
+Other example rows:
 - `PageOneName,p`
 - `0,`
 - `/PageOneName,p`
