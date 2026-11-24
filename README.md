@@ -43,6 +43,7 @@ The shared `indd_export_settings.csv` remains the fallback if no document-specif
 
 Column 1 rules:
 - `0` -> do not export that page
+- leading `/` -> do not export that page
 - leading `#` -> do not export that page (the row still corresponds to its page)
 - non-empty text -> use that text instead of page number in filename suffix
 - empty -> use the actual page number (default behavior)
@@ -54,9 +55,12 @@ Column 2 rules:
 Example CSV rows:
 - `PageOneName,p`
 - `0,`
+- `/PageOneName,p`
 - `#PageOneName,p`
 - `,p`
 - `FORMATS,NOBLEED|WEB|PNG300`
+
+When any page is skipped with `#` or `/`, existing export folders and other files are kept in place. Only files that the new export will overwrite are copied to the archive. If no files will be overwritten, no archive is created.
 
 Example output:
 - `{Document Name}-{Format}-PageOneName-430x452.pdf`

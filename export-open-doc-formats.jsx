@@ -24,6 +24,9 @@
   var pageCount = doc.pages.length;
   var settings = readOptionalSettingsCsv(baseFolder, docName, safeDocName);
   var exportPlan = buildExportPlan(doc, settings.pageRows);
+  var partialExport = hasPrefixSkippedPages(settings.pageRows, pageCount);
+  var partialArchiveRoot = null;
+  var partialArchiveChecked = {};
 
   var exportsBase = ensureFolder(baseFolder, "_exports");
   var exportRoot = new Folder(exportsBase.fsName + "/" + safeDocName);
@@ -37,7 +40,9 @@
     return;
   }
 
-  archiveExistingExportFolderIfNeeded(exportsBase, exportRoot, safeDocName);
+  if (!partialExport) {
+    archiveExistingExportFolderIfNeeded(exportsBase, exportRoot, safeDocName);
+  }
   exportRoot = ensureFolder(exportsBase, safeDocName);
   var folderNoBleed = settings.enabledFormats.NOBLEED ? ensureFolder(exportRoot, "NOBLEED") : null;
   var folderBleed = settings.enabledFormats.BLEED ? ensureFolder(exportRoot, "BLEED") : null;
@@ -121,12 +126,14 @@
   function exportPdfPrint(docRef, preset, outFolder, safeBaseName, formatName, pageRange, safePageNum) {
     app.pdfExportPreferences.pageRange = pageRange;
     var outFile = new File(outFolder.fsName + "/" + safeBaseName + "-" + formatName + "-" + safePageNum + ".pdf");
+    archiveOverwrittenFile(outFile, outFolder.name);
     docRef.exportFile(ExportFormat.PDF_TYPE, outFile, false, preset);
   }
 
   function exportPdfInteractive(docRef, outFolder, safeBaseName, formatName, pageRange, safePageNum) {
     app.interactivePDFExportPreferences.pageRange = pageRange;
     var outFile = new File(outFolder.fsName + "/" + safeBaseName + "-" + formatName + "-" + safePageNum + ".pdf");
+    archiveOverwrittenFile(outFile, outFolder.name);
     docRef.exportFile(ExportFormat.INTERACTIVE_PDF, outFile, false);
   }
 
@@ -156,6 +163,7 @@
       throw new Error("PNG export did not create the expected file for page " + pageRange + ".");
     }
 
+    archiveOverwrittenFile(targetFile, outFolder.name);
     if (targetFile.exists && !targetFile.remove()) {
       throw new Error("Could not overwrite existing PNG file:\n" + targetFile.fsName);
     }
@@ -171,6 +179,39 @@
       folder.create();
     }
     return folder;
+  }
+
+  function hasPrefixSkippedPages(rows, totalPages) {
+    if (!rows) return false;
+    for (var i = 0; i < rows.length && i < totalPages; i++) {
+      var prefix = rows[i].suffixValue.charAt(0);
+      if (prefix === "#" || prefix === "/") return true;
+    }
+    return false;
+  }
+
+  function archiveOverwrittenFile(file, formatFolderName) {
+    if (!partialExport) return;
+    var key = "$" + file.fsName;
+    if (partialArchiveChecked[key]) return;
+    partialArchiveChecked[key] = true;
+    if (!file.exists) return;
+    if (!partialArchiveRoot) {
+      var ssFolder = ensureFolder(exportsBase, "_ss");
+      var baseName = "moved_" + buildDateTimeStamp();
+      var name = baseName;
+      var n = 1;
+      while (new Folder(ssFolder.fsName + "/" + name).exists) {
+        name = baseName + "_" + n++;
+      }
+      var movedFolder = ensureFolder(ssFolder, name);
+      partialArchiveRoot = ensureFolder(movedFolder, safeDocName);
+    }
+    var archiveFolder = ensureFolder(partialArchiveRoot, formatFolderName);
+    var archiveFile = new File(archiveFolder.fsName + "/" + file.name);
+    if (archiveFile.exists || !file.copy(archiveFile.fsName)) {
+      throw new Error("Could not archive existing export file:\n" + file.fsName);
+    }
   }
 
   function findGeneratedPng(folder, tempBaseName) {
@@ -530,7 +571,7 @@
     }
 
     var row = rows[pageIndex];
-    if (row.suffixValue === "0" || row.suffixValue.charAt(0) === "#") {
+    if (row.suffixValue === "0" || row.suffixValue.charAt(0) === "/" || row.suffixValue.charAt(0) === "#") {
       return null;
     }
     if (row.suffixValue !== "") {
