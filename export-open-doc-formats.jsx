@@ -24,6 +24,9 @@
   var pageCount = doc.pages.length;
   var settings = readOptionalSettingsCsv(baseFolder, docName, safeDocName);
   var exportPlan = buildExportPlan(doc, settings.pageRows);
+  var partialExport = hasPrefixSkippedPages(settings.pageRows, pageCount);
+  var partialArchiveRoot = null;
+  var partialArchiveChecked = {};
 
   var exportsBase = ensureFolder(baseFolder, "_exports");
   var exportRoot = new Folder(exportsBase.fsName + "/" + safeDocName);
@@ -37,7 +40,9 @@
     return;
   }
 
-  archiveExistingExportFolderIfNeeded(exportsBase, exportRoot, safeDocName);
+  if (!partialExport) {
+    archiveExistingExportFolderIfNeeded(exportsBase, exportRoot, safeDocName);
+  }
   exportRoot = ensureFolder(exportsBase, safeDocName);
   var folderNoBleed = settings.enabledFormats.NOBLEED ? ensureFolder(exportRoot, "NOBLEED") : null;
   var folderBleed = settings.enabledFormats.BLEED ? ensureFolder(exportRoot, "BLEED") : null;
@@ -121,12 +126,14 @@
   function exportPdfPrint(docRef, preset, outFolder, safeBaseName, formatName, pageRange, safePageNum) {
     app.pdfExportPreferences.pageRange = pageRange;
     var outFile = new File(outFolder.fsName + "/" + safeBaseName + "-" + formatName + "-" + safePageNum + ".pdf");
+    archiveOverwrittenFile(outFile, outFolder.name);
     docRef.exportFile(ExportFormat.PDF_TYPE, outFile, false, preset);
   }
 
   function exportPdfInteractive(docRef, outFolder, safeBaseName, formatName, pageRange, safePageNum) {
     app.interactivePDFExportPreferences.pageRange = pageRange;
     var outFile = new File(outFolder.fsName + "/" + safeBaseName + "-" + formatName + "-" + safePageNum + ".pdf");
+    archiveOverwrittenFile(outFile, outFolder.name);
     docRef.exportFile(ExportFormat.INTERACTIVE_PDF, outFile, false);
   }
 
@@ -156,6 +163,7 @@
       throw new Error("PNG export did not create the expected file for page " + pageRange + ".");
     }
 
+    archiveOverwrittenFile(targetFile, outFolder.name);
     if (targetFile.exists && !targetFile.remove()) {
       throw new Error("Could not overwrite existing PNG file:\n" + targetFile.fsName);
     }
@@ -171,6 +179,39 @@
       folder.create();
     }
     return folder;
+  }
+
+  function hasPrefixSkippedPages(rows, totalPages) {
+    if (!rows) return false;
+    for (var i = 0; i < rows.length && i < totalPages; i++) {
+      var prefix = rows[i].suffixValue.charAt(0);
+      if (prefix === "#" || prefix === "/") return true;
+    }
+    return false;
+  }
+
+  function archiveOverwrittenFile(file, formatFolderName) {
+    if (!partialExport) return;
+    var key = "$" + file.fsName;
+    if (partialArchiveChecked[key]) return;
+    partialArchiveChecked[key] = true;
+    if (!file.exists) return;
+    if (!partialArchiveRoot) {
+      var ssFolder = ensureFolder(exportsBase, "_ss");
+      var baseName = "moved_" + buildDateTimeStamp();
+      var name = baseName;
+      var n = 1;
+      while (new Folder(ssFolder.fsName + "/" + name).exists) {
+        name = baseName + "_" + n++;
+      }
+      var movedFolder = ensureFolder(ssFolder, name);
+      partialArchiveRoot = ensureFolder(movedFolder, safeDocName);
+    }
+    var archiveFolder = ensureFolder(partialArchiveRoot, formatFolderName);
+    var archiveFile = new File(archiveFolder.fsName + "/" + file.name);
+    if (archiveFile.exists || !file.copy(archiveFile.fsName)) {
+      throw new Error("Could not archive existing export file:\n" + file.fsName);
+    }
   }
 
   function findGeneratedPng(folder, tempBaseName) {
@@ -198,7 +239,7 @@
     var archivedFolder = new Folder(movedFolder.fsName + "/" + archivedFolderName);
 
     if (archivedFolder.exists) {
-      archivedFolderName += "_" + getTimeSuffix();
+      archivedFolderName += "_" + stamp.slice(-6);
       archivedFolder = new Folder(movedFolder.fsName + "/" + archivedFolderName);
     }
 
@@ -225,15 +266,6 @@
       d.getFullYear() +
       pad2(d.getMonth() + 1) +
       pad2(d.getDate()) + "_" +
-      pad2(d.getHours()) +
-      pad2(d.getMinutes()) +
-      pad2(d.getSeconds())
-    );
-  }
-
-  function getTimeSuffix() {
-    var d = new Date();
-    return (
       pad2(d.getHours()) +
       pad2(d.getMinutes()) +
       pad2(d.getSeconds())
@@ -530,7 +562,7 @@
     }
 
     var row = rows[pageIndex];
-    if (row.suffixValue === "0") {
+    if (row.suffixValue === "0" || row.suffixValue.charAt(0) === "/" || row.suffixValue.charAt(0) === "#") {
       return null;
     }
     if (row.suffixValue !== "") {
@@ -619,6 +651,37 @@
 
     var btns = win.add("group");
     btns.alignment = "right";
+    var dummyBtn = btns.add("button", undefined, "Create Dummy CSV");
+    dummyBtn.onClick = function () {
+      if (!doc.saved) {
+        alert("Save the InDesign document first, then run the script again to create its settings CSV.");
+        return;
+      }
+      var csv = new File(baseFolder.fsName + "/" + docName + "_indd_export_settings.csv");
+      if (csv.exists) {
+        alert("A settings CSV already exists at:\n" + csv.fsName + "\n\nEdit that file, then run the script again.");
+        return;
+      }
+      var rows = [];
+      for (var i = 0; i < totalPages; i++) {
+        rows.push(",");
+      }
+      rows.push("FORMATS,NOBLEED|BLEED|WEB|PNG150|PNG300");
+      csv.encoding = "UTF-8";
+      csv.lineFeed = "Unix";
+      if (!csv.open("w")) {
+        alert("Could not create settings CSV:\n" + csv.fsName + "\n" + csv.error);
+        return;
+      }
+      var written = csv.write(rows.join("\n") + "\n");
+      var closed = csv.close();
+      if (!written || !closed) {
+        alert("Could not finish writing settings CSV:\n" + csv.fsName + "\n" + csv.error);
+        return;
+      }
+      alert("Created settings CSV:\n" + csv.fsName + "\n\nEach page has a blank suffix and dimensions column. All export formats are enabled. Edit the CSV, then run the script again.");
+      win.close(2);
+    };
     var continueBtn = btns.add("button", undefined, "Continue", { name: "ok" });
     btns.add("button", undefined, "Cancel", { name: "cancel" });
     continueBtn.active = true;
